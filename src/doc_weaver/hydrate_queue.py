@@ -1,8 +1,8 @@
 """Batch-based hydration of markdown placeholders with LLM-generated content.
 
 This module provides a queue-based system for processing markdown documents
-containing `<A, B, C>` placeholders, where A is the batch number, B is the
-minimum character count, and C is the maximum character count. The queue
+containing `<A, B, C, context_id>` placeholders, where A is the batch number, B is the
+minimum character count, C is the maximum character count, and context_id (corresponding to a context string). The queue
 processes placeholders in batch order, with all items in the same batch
 resolved concurrently.
 
@@ -22,13 +22,13 @@ from doc_weaver.document import Document
 from doc_weaver.parser import load_markdown
 from doc_weaver.hydrate_batch import hydrate_item
 
-PLACEHOLDER_PATTERN = re.compile(r'<(\d+)\s*,\s*(\d+)\s*,\s*(\d+)>')
+PLACEHOLDER_PATTERN = re.compile(r'<(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([A-Za-z_]\w*))?>')
 
 
 class HydrationTask:
     """A single placeholder to be resolved, with its character bounds and unique marker."""
 
-    def __init__(self, batch: int, min_chars: int, max_chars: int, raw: str, marker: str):
+    def __init__(self, batch: int, min_chars: int, max_chars: int, raw: str, marker: str, context_id: str | None = None):
         """Initialize a hydration task from parsed placeholder data.
 
         Args:
@@ -40,18 +40,21 @@ class HydrationTask:
                 e.g. `"<1, 50, 200>"`.
             marker: Unique marker string replacing this placeholder during processing,
                 e.g. `"<<TASK_0>>"`.
+            context_id: Optional context identifier for task-specific context,
+                e.g. `"dam_engineering"`.
         """
         self.batch = batch
         self.min_chars = min_chars
         self.max_chars = max_chars
         self.raw = raw # the original placeholder string, e.g. "<1, 50, 200>"
         self.marker = marker # unique marker replacing this placeholder, e.g. "<<TASK_0>>"
+        self.context_id = context_id # optional context ID, e.g. "dam_engineering"
 
 
 class HydrateQueue:
-    """Builds a queue of batches from a markdown document containing <A, B, C> placeholders.
+    """Builds a queue of batches from a markdown document containing <A, B, C, context_id> placeholders.
 
-    Takes a markdown document string and builds a queue by replacing <A, B, C>
+    Takes a markdown document string and builds a queue by replacing <A, B, C, context_id>
     with actual content in batches. A determines the batch order where lower
     numbers come first and equal numbers are filled concurrently. B is the
     inclusive lower bound for number of characters allowed in the replacement
@@ -65,13 +68,14 @@ class HydrateQueue:
     def __init__(self, markdown: str):
         """Initialize the queue from a markdown document containing placeholders.
 
-        Parses all `<A, B, C>` placeholders in the document, replaces them with
+        Parses all `<A, B, C, context_id>` placeholders in the document, replaces them with
         unique markers, and prepares the batch processing queue sorted by batch
         number.
 
         Args:
-            markdown: Markdown document string containing zero or more `<A, B, C>`
-                placeholders. Placeholders are regex-matched as `<int, int, int>`.
+            markdown: Markdown document string containing zero or more `<A, B, C, context_id>`
+                placeholders. Placeholders are regex-matched as `<int, int, int>` or
+                `<int, int, int, identifier>`.
         """
         self._original_markdown = markdown
         self._tasks = self._parse_tasks()
@@ -82,7 +86,7 @@ class HydrateQueue:
     def _parse_tasks(self) -> List[HydrationTask]:
         """Extract and parse all placeholders from the original markdown.
 
-        Scans the document for `<A, B, C>` patterns and creates a `HydrationTask`
+        Scans the document for `<A, B, C, context_id>` patterns and creates a `HydrationTask`
         for each, assigning a unique sequential marker like `<<TASK_0>>`.
 
         Returns:
@@ -93,8 +97,9 @@ class HydrateQueue:
             batch = int(match.group(1))
             min_chars = int(match.group(2))
             max_chars = int(match.group(3))
+            context_id = match.group(4)  # None if not present
             marker = f"<<TASK_{i}>>"
-            tasks.append(HydrationTask(batch, min_chars, max_chars, match.group(0), marker))
+            tasks.append(HydrationTask(batch, min_chars, max_chars, match.group(0), marker, context_id))
         return tasks
 
     def _inject_markers(self, markdown: str) -> str:
@@ -121,15 +126,15 @@ class HydrateQueue:
         """Get the batch number currently being processed.
 
         Returns:
-            The integer batch number (A value from `<A, B, C>`) for the current
+            The integer batch number (A value from `<A, B, C, context_id>`) for the current
             batch, or None if all batches are complete.
         """
         if self.done:
             return None
         return self._batch_numbers[self._batch_index]
 
-    def next_batch(self) -> List[Tuple[Document, int, int]]:
-        """Returns the next batch as a list of (Document, min_chars, max_chars).
+    def next_batch(self) -> List[Tuple[Document, int, int, str | None]]:
+        """Returns the next batch as a list of (Document, min_chars, max_chars, context_id).
 
         For each task in the current batch, produces a Document where:
         - The current task's placeholder is replaced with <TODO>
@@ -151,7 +156,7 @@ class HydrateQueue:
             # Replace all other remaining markers with (will be filled later)
             md = marker_pattern.sub('(will be filled later)', md)
             doc = load_markdown(md, check_todo=True)
-            results.append((doc, task.min_chars, task.max_chars))
+            results.append((doc, task.min_chars, task.max_chars, task.context_id))
 
         return results
 
@@ -196,19 +201,22 @@ class HydrateQueue:
         return self._current_markdown
 
 
-async def hydrate(markdown: str, context: str = "", timeout: int = 30, model: str = "gpt-4o") -> tuple[str, dict]:
-    """Resolves all <A, B, C> placeholders in a markdown document.
+async def hydrate(markdown: str, context: str = "", timeout: int = 30, model: str = "gpt-4o", contexts: dict[str, str] | None = None) -> tuple[str, dict]:
+    """Resolves all <A, B, C, context_id> placeholders in a markdown document.
 
     Processes batches sequentially (lower A first), running all items within
     a batch concurrently. Each batch sees the results of all previous batches
     in the document context.
 
     Args:
-        markdown: A markdown string containing <A, B, C> placeholders.
-        context: Optional additional instructions or context to include
-                 alongside the document preview for each placeholder.
+        markdown: A markdown string containing placeholders.
+        context: Optional global context/instructions to include alongside
+                 the document preview for every placeholder.
         timeout: Maximum time in seconds to wait for each batch to complete.
         model: The LLM model to use for text generation.
+        contexts: Optional mapping of context ID to context text. Tasks that
+                  reference a context_id will have the corresponding text
+                  prepended to their content in addition to the global context.
 
     Returns:
         A tuple of (hydrated_markdown, metadata) where metadata is a dict with:
@@ -216,7 +224,17 @@ async def hydrate(markdown: str, context: str = "", timeout: int = 30, model: st
             - total_elapsed_ms: total wall-clock time in milliseconds
             - model: the model used
     """
+    if contexts is None:
+        contexts = {}
+
     queue = HydrateQueue(markdown)
+
+    # Validate that all referenced context IDs exist
+    missing = [t.context_id for t in queue._tasks if t.context_id and t.context_id not in contexts]
+    if missing:
+        unique_missing = sorted(set(missing))
+        raise ValueError(f"Missing context(s): {', '.join(unique_missing)}. Add them with `doc-weaver context add`.")
+
     task_metadata = []
     global_task_number = 0
     total_start = time.time()
@@ -226,7 +244,10 @@ async def hydrate(markdown: str, context: str = "", timeout: int = 30, model: st
         batch = queue.next_batch()
         batch_tasks = [t for t in queue._tasks if t.batch == batch_num]
 
-        coros = [hydrate_item(doc, min_c, max_c, context, model) for doc, min_c, max_c in batch]
+        coros = [
+            hydrate_item(doc, min_c, max_c, context, model, task_context=contexts.get(ctx_id, "") if ctx_id else "")
+            for doc, min_c, max_c, ctx_id in batch
+        ]
         results_with_timing = await asyncio.wait_for(asyncio.gather(*coros), timeout=timeout)
 
         replacements = []
@@ -240,6 +261,7 @@ async def hydrate(markdown: str, context: str = "", timeout: int = 30, model: st
                 "total_chars": len(text),
                 "elapsed_ms": round(elapsed_ms, 2),
                 "model": model,
+                "context_id": task.context_id,
             })
             replacements.append(text)
             global_task_number += 1

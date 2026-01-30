@@ -245,6 +245,7 @@ class TestGenerate:
         templates_dir.mkdir()
         (templates_dir / "resume.md").write_text(VALID_TEMPLATE)
         monkeypatch.setattr("doc_weaver.cli.TEMPLATES_DIR", templates_dir)
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", tmp_path / "contexts")
 
         output_dir = tmp_path / "output"
 
@@ -254,7 +255,7 @@ class TestGenerate:
             "model": "gpt-4o",
         }
 
-        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30):
+        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30, contexts=None):
             return "# Hydrated doc\n", metadata
 
         with patch("doc_weaver.cli.hydrate", side_effect=mock_hydrate):
@@ -274,6 +275,7 @@ class TestGenerate:
         templates_dir.mkdir()
         (templates_dir / "t.md").write_text(VALID_TEMPLATE)
         monkeypatch.setattr("doc_weaver.cli.TEMPLATES_DIR", templates_dir)
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", tmp_path / "contexts")
 
         prompt_file = tmp_path / "prompt.txt"
         prompt_file.write_text("Context from file")
@@ -281,7 +283,7 @@ class TestGenerate:
 
         metadata = {"tasks": [], "total_elapsed_ms": 10.0, "model": "gpt-4o"}
 
-        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30):
+        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30, contexts=None):
             return "# Result\n", metadata
 
         with patch("doc_weaver.cli.hydrate", side_effect=mock_hydrate):
@@ -331,11 +333,12 @@ class TestGenerate:
         templates_dir.mkdir()
         (templates_dir / "t.md").write_text(VALID_TEMPLATE)
         monkeypatch.setattr("doc_weaver.cli.TEMPLATES_DIR", templates_dir)
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", tmp_path / "contexts")
 
         output_dir = tmp_path / "out"
         metadata = {"tasks": [], "total_elapsed_ms": 5.0, "model": "gpt-4o"}
 
-        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30):
+        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30, contexts=None):
             assert context == ""
             return "# Output\n", metadata
 
@@ -347,6 +350,185 @@ class TestGenerate:
             ])
 
         assert result.exit_code == 0
+
+
+class TestContextAdd:
+
+    def test_add_context(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        src = tmp_path / "ctx.txt"
+        src.write_text("Some context text")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "add", "myctx", str(src)])
+        assert result.exit_code == 0
+        assert "added" in result.output
+        assert (contexts_dir / "myctx.txt").exists()
+
+    def test_add_context_overwrites(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        (contexts_dir / "old.txt").write_text("old content")
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        src = tmp_path / "new.txt"
+        src.write_text("new content")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "add", "old", str(src)])
+        assert result.exit_code == 0
+        assert "Overwriting" in result.output
+
+
+class TestContextList:
+
+    def test_list_empty(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "list"])
+        assert result.exit_code == 0
+        assert "No contexts" in result.output
+
+    def test_list_shows_contexts(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        (contexts_dir / "alpha.txt").write_text("a")
+        (contexts_dir / "beta.txt").write_text("b")
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "list"])
+        assert result.exit_code == 0
+        assert "alpha" in result.output
+        assert "beta" in result.output
+
+
+class TestContextShow:
+
+    def test_show_existing(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        (contexts_dir / "demo.txt").write_text("Demo context content")
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "show", "demo"])
+        assert result.exit_code == 0
+        assert "Demo context content" in result.output
+
+    def test_show_nonexistent(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "show", "nope"])
+        assert result.exit_code != 0
+        assert "not found" in result.output
+
+
+class TestContextRemove:
+
+    def test_remove_existing(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        (contexts_dir / "old.txt").write_text("old")
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "remove", "old"])
+        assert result.exit_code == 0
+        assert "removed" in result.output
+        assert not (contexts_dir / "old.txt").exists()
+
+    def test_remove_nonexistent(self, tmp_path, monkeypatch):
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["context", "remove", "nope"])
+        assert result.exit_code != 0
+        assert "not found" in result.output
+
+
+class TestConfigSetEdgeCases:
+
+    def test_set_skips_comments_and_blanks(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / ".doc_weaver"
+        config_dir.mkdir()
+        env_file = config_dir / ".env"
+        env_file.write_text("# comment\n\nKEY=old\n")
+        monkeypatch.setattr("doc_weaver.cli.CONFIG_DIR", config_dir)
+        monkeypatch.setattr("doc_weaver.cli.ENV_FILE", env_file)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["config", "set", "KEY", "new"])
+        assert result.exit_code == 0
+        content = env_file.read_text()
+        assert "KEY=new" in content
+        assert "# comment" not in content
+
+
+class TestGenerateEdgeCases:
+
+    def test_generate_with_stored_contexts(self, tmp_path, monkeypatch):
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "t.md").write_text(VALID_TEMPLATE)
+        monkeypatch.setattr("doc_weaver.cli.TEMPLATES_DIR", templates_dir)
+
+        contexts_dir = tmp_path / "contexts"
+        contexts_dir.mkdir()
+        (contexts_dir / "eng.txt").write_text("Engineering context")
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", contexts_dir)
+
+        output_dir = tmp_path / "out"
+        metadata = {"tasks": [], "total_elapsed_ms": 5.0, "model": "gpt-4o"}
+
+        captured_contexts = {}
+
+        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30, contexts=None):
+            captured_contexts.update(contexts or {})
+            return "# Output\n", metadata
+
+        with patch("doc_weaver.cli.hydrate", side_effect=mock_hydrate):
+            runner = CliRunner()
+            result = runner.invoke(cli, [
+                "generate", "t",
+                "--output-dir", str(output_dir),
+            ])
+
+        assert result.exit_code == 0
+        assert "eng" in captured_contexts
+        assert captured_contexts["eng"] == "Engineering context"
+
+    def test_generate_hydrate_value_error(self, tmp_path, monkeypatch):
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "t.md").write_text(VALID_TEMPLATE)
+        monkeypatch.setattr("doc_weaver.cli.TEMPLATES_DIR", templates_dir)
+        monkeypatch.setattr("doc_weaver.cli.CONTEXTS_DIR", tmp_path / "contexts")
+
+        async def mock_hydrate(md, context="", model="gpt-4o", timeout=30, contexts=None):
+            raise ValueError("Missing context(s): eng")
+
+        with patch("doc_weaver.cli.hydrate", side_effect=mock_hydrate):
+            runner = CliRunner()
+            result = runner.invoke(cli, [
+                "generate", "t",
+                "--output-dir", str(tmp_path / "out"),
+                "--prompt", "test",
+            ])
+
+        assert result.exit_code != 0
+        assert "Missing context" in result.output
 
 
 class TestValidateTemplateEdgeCases:
@@ -395,6 +577,23 @@ class TestValidateTemplateEdgeCases:
 """
         errors = validate_template(md)
         assert any("max_chars must be >= 1" in e for e in errors)
+
+    def test_placeholder_at_eof_no_trailing_newline(self):
+        md = "# Title\n> Tagline\n## Section\n### Sub\n- <1, 10, 50>"
+        errors = validate_template(md)
+        assert errors == []
+
+    def test_min_chars_zero_valid(self):
+        md = """\
+# Title
+> <1, 0, 50>
+## Section
+### Sub
+- Content
+"""
+        errors = validate_template(md)
+        # min_chars=0 is valid (>= 0), should not produce a min_chars error
+        assert not any("min_chars must be >= 0" in e for e in errors)
 
 
 
