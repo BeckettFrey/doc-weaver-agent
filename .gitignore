@@ -1,0 +1,8 @@
+.env
+uv.lock
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+pytest_cache/
