@@ -208,7 +208,7 @@ def validate_template(markdown: str) -> list[str]:
         test_md = markdown
 
     try:
-        load_markdown(test_md)
+        load_markdown(test_md, check_todo=True)
     except ValidationError as e:
         errors.append(f"Structure error: {e}")
 

@@ -2,9 +2,9 @@
 
 This module provides functionality to load and validate markdown documents
 that follow a specific structure: title, tagline, sections, subsections,
-and bullet content. The parser enforces strict formatting rules and validates
+and bullet content. The parser enforces strict formatting rules and optionally validates
 that exactly one `<TODO>` placeholder exists on its own line in the rendered
-document preview.
+document preview (via the check_todo argument).
 
 The expected markdown structure is:
 
@@ -31,11 +31,10 @@ class ValidationError(Exception):
     """Raised when markdown doesn't conform to expected structure"""
     pass
 
-def load_markdown(markdown: str) -> Document:
+def load_markdown(markdown: str, check_todo: bool = False) -> Document:
     """Parse a structured markdown string into a Document object.
 
-    Parses markdown text with a strict hierarchical structure and validates
-    that it contains exactly one `<TODO>` placeholder on its own line. The
+    Parses markdown text with a strict hierarchical structure. The
     parser expects the following structure:
 
     1. Title line starting with `# `
@@ -45,7 +44,7 @@ def load_markdown(markdown: str) -> Document:
     5. Bullet content starting with `- `
 
     The function validates structural integrity (e.g., subsections must belong
-    to a section, content must belong to a subsection) and ensures that the
+    to a section, content must belong to a subsection) and optionally ensures that the
     rendered preview contains exactly one `<TODO>` placeholder as the sole
     non-markdown content on its line.
 
@@ -53,6 +52,7 @@ def load_markdown(markdown: str) -> Document:
         markdown: A markdown-formatted string adhering to the expected structure.
             Must contain a title, tagline, at least one section with subsections
             and content, and exactly one `<TODO>` placeholder.
+        check_todo: If True, enforces the presence of exactly one `<TODO>`
 
     Returns:
         A `Document` object with parsed header, tagline, sections, subsections,
@@ -64,8 +64,8 @@ def load_markdown(markdown: str) -> Document:
         ValidationError: If a subsection is found before any section.
         ValidationError: If content is found before any subsection.
         ValidationError: If a line does not match the expected format.
-        ValidationError: If the preview does not contain exactly one `<TODO>`.
-        ValidationError: If `<TODO>` is not the only non-markdown content on its line.
+        ValidationError: If the preview does not contain exactly one `<TODO>` and check_todo is True.
+        ValidationError: If `<TODO>` is not the only non-markdown content on its line and check_todo is True.
 
     Example:
         ```python
@@ -137,28 +137,29 @@ def load_markdown(markdown: str) -> Document:
         
         idx += 1
     
-    # Validate exactly one <TODO> on its own line
-    preview = doc.preview()
-    
-    todo_count = preview.count('<TODO>')
-    
-    if todo_count != 1:
-        print(preview)
-        raise ValidationError(f"Preview must contain exactly one <TODO>, found {todo_count}")
-    
-    # Check that <TODO> is alone on its line (aside from markdown markers)
-    preview_lines = preview.split('\n')
-    todo_line_found = False
-    for line in preview_lines:
-        if '<TODO>' in line:
-            # Strip markdown markers (-, ##, ###, >, #, whitespace)
-            stripped = line.lstrip('#').lstrip('>').lstrip('-').strip()
-            if stripped != '<TODO>':
-                raise ValidationError(f"<TODO> must be the only non-markdown content on its line, found: '{line.strip()}'")
-            todo_line_found = True
-            break
-    
-    if not todo_line_found:
-        raise ValidationError("Preview must contain exactly one <TODO>")
+    if check_todo:
+        # Validate exactly one <TODO> on its own line
+        preview = doc.preview()
+        
+        todo_count = preview.count('<TODO>')
+        
+        if todo_count != 1:
+            print(preview)
+            raise ValidationError(f"Preview must contain exactly one <TODO>, found {todo_count}")
+        
+        # Check that <TODO> is alone on its line (aside from markdown markers)
+        preview_lines = preview.split('\n')
+        todo_line_found = False
+        for line in preview_lines:
+            if '<TODO>' in line:
+                # Strip markdown markers (-, ##, ###, >, #, whitespace)
+                stripped = line.lstrip('#').lstrip('>').lstrip('-').strip()
+                if stripped != '<TODO>':
+                    raise ValidationError(f"<TODO> must be the only non-markdown content on its line, found: '{line.strip()}'")
+                todo_line_found = True
+                break
+        
+        if not todo_line_found:
+            raise ValidationError("Preview must contain exactly one <TODO>")
     
     return doc

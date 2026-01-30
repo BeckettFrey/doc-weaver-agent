@@ -25,7 +25,7 @@ class TestLoadMarkdown:
 ### Languages
 - English (Fluent)
 - Spanish (Intermediate)"""
-            doc = load_markdown(normal_md)
+            doc = load_markdown(normal_md, check_todo=True)
             assert doc.header == "John Doe - Software Engineer"
             assert "Experienced Software Engineer" in doc.tagline
             assert "History" in doc.sections
@@ -35,7 +35,7 @@ class TestLoadMarkdown:
         def test_short_markdown(self):
             from doc_weaver.parser import load_markdown
             short_md = """# Title\n> <TODO>"""
-            doc2 = load_markdown(short_md)
+            doc2 = load_markdown(short_md, check_todo=True)
             assert doc2.tagline == "<TODO>"
             assert doc2.header == "Title"
 
@@ -51,7 +51,7 @@ class TestLoadMarkdown:
                     else:
                         for k in range(3):
                             long_md += f"- Content item {k}\n"
-            doc = load_markdown(long_md)
+            doc = load_markdown(long_md, check_todo=True)
             assert doc.header == "Title"
             assert len(doc.sections) == 150
 
@@ -62,7 +62,7 @@ class TestLoadMarkdown:
 ## Projects
 ### Project A
 - <TODO>"""
-            doc = load_markdown(todo_md)
+            doc = load_markdown(todo_md, check_todo=True)
             assert doc.header == "Jane Smith - Data Scientist"
             assert "<TODO>" in doc.preview()
 
@@ -73,7 +73,7 @@ class TestLoadMarkdown:
 ## <TODO>
 ### Project A
 - Completed data analysis for client X."""
-            doc = load_markdown(todo_md)
+            doc = load_markdown(todo_md, check_todo=True)
             assert "<TODO>" in doc.sections
             assert "<TODO>" in doc.preview()
 
@@ -84,7 +84,7 @@ class TestLoadMarkdown:
 ## Projects
 ### <TODO>
 - Completed data analysis for client X."""
-            doc = load_markdown(todo_md)
+            doc = load_markdown(todo_md, check_todo=True)
             assert doc.sections["Projects"][0].title == "<TODO>"
             assert "<TODO>" in doc.preview()
 
@@ -95,7 +95,7 @@ class TestLoadMarkdown:
 ## Projects
 ### Project A
 - Completed data analysis for client X."""
-            doc = load_markdown(todo_md)
+            doc = load_markdown(todo_md, check_todo=True)
             assert doc.header == "<TODO>"
             assert "<TODO>" in doc.preview()
 
@@ -106,7 +106,7 @@ class TestLoadMarkdown:
 ## Projects
 ### Project A
 - Completed data analysis for client X."""
-            doc = load_markdown(todo_md)
+            doc = load_markdown(todo_md, check_todo=True)
             assert doc.tagline == "<TODO>"
             assert "<TODO>" in doc.preview()
 
@@ -123,7 +123,7 @@ class TestLoadMarkdown:
 ### Project B
 - <TODO>"""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for multiple TODOs"
             except ValidationError as e:
                 assert "exactly one <TODO>" in str(e)
@@ -136,7 +136,7 @@ class TestLoadMarkdown:
 ### Project A
 - Completed data analysis for client X."""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for no TODO"
             except ValidationError as e:
                 assert "exactly one <TODO>" in str(e)
@@ -149,7 +149,7 @@ Passionate about data and analytics.
 ### Project A
 - Completed data analysis for client X."""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for missing tagline marker"
             except ValidationError as e:
                 assert "tagline" in str(e).lower()
@@ -162,7 +162,7 @@ Passionate about data and analytics.
 - Completed data analysis for client X.
 ### Project A"""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for content before subsection"
             except ValidationError as e:
                 assert "before any subsection" in str(e)
@@ -175,7 +175,7 @@ Passionate about data and analytics.
 - <TODO>
 ## Projects"""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for subsection before section"
             except ValidationError as e:
                 assert "before any section" in str(e)
@@ -188,7 +188,7 @@ Passionate about data and analytics.
 ### Project A
 * Completed data analysis for client X."""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for invalid bullet format (*)"
             except ValidationError as e:
                 assert "Invalid line format" in str(e)
@@ -200,7 +200,7 @@ Passionate about data and analytics.
 ### Project A
 - Completed data analysis for client X."""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for missing title"
             except ValidationError as e:
                 assert "title" in str(e).lower()
@@ -213,7 +213,7 @@ Passionate about data and analytics.
 ### Sub
 - hello <TODO> world"""
             try:
-                _ = load_markdown(invalid_md)
+                _ = load_markdown(invalid_md, check_todo=True)
                 assert False, "Should have raised ValidationError for TODO not alone on line"
             except ValidationError as e:
                 assert "only non-markdown content" in str(e)

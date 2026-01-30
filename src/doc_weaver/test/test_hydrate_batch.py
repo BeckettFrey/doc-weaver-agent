@@ -16,7 +16,7 @@ SAMPLE_MD = """# John Doe - Software Engineer
 
 
 def make_doc():
-    return load_markdown(SAMPLE_MD)
+    return load_markdown(SAMPLE_MD, check_todo=True)
 
 
 class TestHydrateItem:
