@@ -1,7 +1,7 @@
+"""Command-line interface for Doc Weaver template management and document generation."""
+
 import asyncio
 import json
-import os
-import re
 import shutil
 from pathlib import Path
 
@@ -22,10 +22,12 @@ console = Console()
 
 
 def _ensure_templates_dir():
+    """Ensure the templates directory exists."""
     TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _template_path(name: str) -> Path:
+    """Return the file path for a template by name."""
     return TEMPLATES_DIR / f"{name}.md"
 
 
