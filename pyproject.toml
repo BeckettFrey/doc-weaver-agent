@@ -9,17 +9,28 @@ description = "A tool that hydrates (populates) markdown document templates. "
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "click>=8.1.0",
     "dotenv>=0.9.9",
     "langchain>=1.2.7",
     "langchain-core>=1.2.7",
     "langchain-openai>=1.1.7",
     "langgraph>=1.0.7",
+    "rich>=13.0.0",
 ]
+
+[project.scripts]
+doc-weaver = "doc_weaver.cli:cli"
 
 [dependency-groups]
 dev = [
+    "coverage-badge>=1.1.2",
     "pytest>=9.0.2",
-    "pytest-asyncio>=1.3.0"
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+]
+docs = [
+    "pdoc>=16.0.0",
+    "pytest>=9.0.2",
 ]
 
 [tool.coverage.run]
