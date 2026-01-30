@@ -72,15 +72,15 @@ class TestHydrateQueue:
     def test_batch_items_have_correct_bounds(self):
         queue = HydrateQueue(SAMPLE_MD)
         batch = queue.next_batch()
-        _, min1, max1 = batch[0]
-        _, min2, max2 = batch[1]
+        _, min1, max1, _ = batch[0]
+        _, min2, max2, _ = batch[1]
         assert (min1, max1) == (20, 100)
         assert (min2, max2) == (10, 50)
 
     def test_batch_documents_contain_todo(self):
         queue = HydrateQueue(SAMPLE_MD)
         batch = queue.next_batch()
-        for doc, _, _ in batch:
+        for doc, _, _, _ in batch:
             preview = doc.preview()
             assert "<TODO>" in preview
             assert preview.count("<TODO>") == 1
@@ -88,7 +88,7 @@ class TestHydrateQueue:
     def test_batch_documents_replace_others_with_placeholder(self):
         queue = HydrateQueue(SAMPLE_MD)
         batch = queue.next_batch()
-        for doc, _, _ in batch:
+        for doc, _, _, _ in batch:
             preview = doc.preview()
             assert "(will be filled later)" in preview
             assert PLACEHOLDER_PATTERN.search(preview) is None
@@ -115,7 +115,7 @@ class TestHydrateQueue:
         queue.submit_results(["Built REST APIs", "Led team of 5"])
         batch2 = queue.next_batch()
         assert len(batch2) == 1
-        doc, min_c, max_c = batch2[0]
+        doc, min_c, max_c, _ = batch2[0]
         preview = doc.preview()
         assert "Built REST APIs" in preview
         assert "Led team of 5" in preview
@@ -181,7 +181,7 @@ class TestHydrateQueue:
         assert len(batch) == 2
 
         # Each document should have exactly one <TODO>
-        for doc, _, _ in batch:
+        for doc, _, _, _ in batch:
             preview = doc.preview()
             assert preview.count("<TODO>") == 1
 
@@ -214,7 +214,7 @@ class TestHydrateQueue:
         # Batch 2: should see both batch 1 results
         batch = queue.next_batch()
         assert len(batch) == 1
-        doc, _, _ = batch[0]
+        doc, _, _, _ = batch[0]
         preview = doc.preview()
         assert "Result AAA!!" in preview
         assert "Result BBB!!" in preview
@@ -274,7 +274,7 @@ class TestHydrate:
     async def test_full_hydration(self):
         results = iter(["Built REST APIs", "Led team of 5", "Python, Go", "Strong communicator"])
 
-        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             text = next(results)
             return text, 1.0
 
@@ -291,7 +291,7 @@ class TestHydrate:
     async def test_passes_context_to_hydrate_item(self):
         calls = []
 
-        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             calls.append(context)
             return "x" * min_c, 1.0
 
@@ -305,7 +305,7 @@ class TestHydrate:
         """Earlier batch results should appear in later batch documents."""
         seen_previews = []
 
-        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             seen_previews.append(doc.preview())
             return "x" * min_c, 1.0
 
@@ -320,7 +320,7 @@ class TestHydrate:
 
     @pytest.mark.asyncio
     async def test_timeout_raises_on_slow_batch(self):
-        async def slow_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def slow_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             await asyncio.sleep(10)
             return "x" * min_c, 1.0
 
@@ -330,7 +330,7 @@ class TestHydrate:
 
     @pytest.mark.asyncio
     async def test_no_timeout_when_batch_completes_quickly(self):
-        async def fast_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def fast_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             return "x" * min_c, 1.0
 
         with patch("doc_weaver.hydrate_queue.hydrate_item", side_effect=fast_hydrate_item):
@@ -343,7 +343,7 @@ class TestHydrate:
         """Items within a batch should run concurrently, not sequentially."""
         call_times = []
 
-        async def tracking_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def tracking_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             start = asyncio.get_event_loop().time()
             await asyncio.sleep(0.05)
             end = asyncio.get_event_loop().time()
@@ -362,7 +362,7 @@ class TestHydrate:
     async def test_passes_model_to_hydrate_item(self):
         models_seen = []
 
-        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             models_seen.append(model)
             return "x" * min_c, 1.0
 
@@ -375,7 +375,7 @@ class TestHydrate:
     async def test_default_model_is_gpt4o(self):
         models_seen = []
 
-        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             models_seen.append(model)
             return "x" * min_c, 1.0
 
@@ -385,9 +385,23 @@ class TestHydrate:
         assert all(m == "gpt-4o" for m in models_seen)
 
     @pytest.mark.asyncio
+    async def test_missing_context_raises(self):
+        """Hydrate should raise ValueError when a placeholder references a missing context."""
+        md = """# Test Doc
+
+> A tagline.
+
+## Section
+### Sub
+- <1, 10, 50, myctx>"""
+
+        with pytest.raises(ValueError, match="Missing context"):
+            await hydrate(md, contexts={})
+
+    @pytest.mark.asyncio
     async def test_metadata_structure(self):
         """Hydrate should return metadata with per-task info and totals."""
-        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o"):
+        async def mock_hydrate_item(doc, min_c, max_c, context="", model="gpt-4o", task_context=""):
             return "x" * min_c, 42.0
 
         with patch("doc_weaver.hydrate_queue.hydrate_item", side_effect=mock_hydrate_item):

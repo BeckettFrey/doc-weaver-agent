@@ -29,7 +29,7 @@ from doc_weaver.text_morpher import simple_morph
 from langchain_core.messages import HumanMessage
 
 
-async def hydrate_item(doc: Document, min_chars: int, max_chars: int, context: str = "", model: str = "gpt-4o") -> tuple[str, float]:
+async def hydrate_item(doc: Document, min_chars: int, max_chars: int, context: str = "", model: str = "gpt-4o", task_context: str = "") -> tuple[str, float]:
     """Resolves a single <TODO> placeholder in a Document.
 
     Calls the responder to fill in the <TODO>, then uses text_morpher
@@ -39,8 +39,11 @@ async def hydrate_item(doc: Document, min_chars: int, max_chars: int, context: s
         doc: A Document with exactly one <TODO> placeholder.
         min_chars: Inclusive lower bound for replacement character count.
         max_chars: Inclusive upper bound for replacement character count.
-        context: Optional additional instructions or context to include
-                 alongside the document preview.
+        context: Optional global context/instructions to include alongside
+                 the document preview.
+        model: The LLM model to use for text generation.
+        task_context: Optional per-task context text to include between the
+                      global context and the document preview.
 
     Returns:
         A tuple of (replacement_string, elapsed_ms).
@@ -51,7 +54,8 @@ async def hydrate_item(doc: Document, min_chars: int, max_chars: int, context: s
     start = time.time()
 
     preview = doc.preview()
-    content = f"{context}\n\n{preview}" if context else preview
+    parts = [p for p in [context, task_context, preview] if p]
+    content = "\n\n".join(parts)
     message = HumanMessage(content=content)
     response = await todo_injector(message, model=model)
 

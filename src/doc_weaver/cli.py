@@ -17,6 +17,7 @@ from doc_weaver.parser import load_markdown, ValidationError
 CONFIG_DIR = Path.home() / ".doc_weaver"
 ENV_FILE = CONFIG_DIR / ".env"
 TEMPLATES_DIR = CONFIG_DIR / "templates"
+CONTEXTS_DIR = CONFIG_DIR / "contexts"
 
 console = Console()
 
@@ -29,6 +30,16 @@ def _ensure_templates_dir():
 def _template_path(name: str) -> Path:
     """Return the file path for a template by name."""
     return TEMPLATES_DIR / f"{name}.md"
+
+
+def _ensure_contexts_dir():
+    """Ensure the contexts directory exists."""
+    CONTEXTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _context_path(name: str) -> Path:
+    """Return the file path for a context by name."""
+    return CONTEXTS_DIR / f"{name}.txt"
 
 
 @click.group()
@@ -156,6 +167,62 @@ def remove(name):
     console.print(f"[green]✓[/green] Template '{name}' removed.")
 
 
+@cli.group()
+def context():
+    """Manage per-task context strings."""
+
+
+@context.command("add")
+@click.argument("name")
+@click.argument("file", type=click.Path(exists=True, dir_okay=False))
+def context_add(name, file):
+    """Store a context text file under NAME."""
+    _ensure_contexts_dir()
+    dest = _context_path(name)
+    if dest.exists():
+        console.print(f"[yellow]Context '{name}' already exists. Overwriting.[/yellow]")
+    shutil.copy2(file, dest)
+    console.print(f"[green]✓[/green] Context '{name}' added.")
+
+
+@context.command("list")
+def context_list():
+    """List all saved contexts."""
+    _ensure_contexts_dir()
+    contexts = sorted(p.stem for p in CONTEXTS_DIR.glob("*.txt"))
+    if not contexts:
+        console.print("[dim]No contexts found.[/dim]")
+        return
+    table = Table(title="Contexts", show_header=False, border_style="dim")
+    table.add_column("Name", style="cyan")
+    for name in contexts:
+        table.add_row(name)
+    console.print(table)
+
+
+@context.command("show")
+@click.argument("name")
+def context_show(name):
+    """Print a context's contents to stdout."""
+    _ensure_contexts_dir()
+    path = _context_path(name)
+    if not path.exists():
+        raise click.ClickException(f"Context '{name}' not found.")
+    console.print(Panel(path.read_text(), title=name, border_style="dim"))
+
+
+@context.command("remove")
+@click.argument("name")
+def context_remove(name):
+    """Delete a context."""
+    _ensure_contexts_dir()
+    path = _context_path(name)
+    if not path.exists():
+        raise click.ClickException(f"Context '{name}' not found.")
+    path.unlink()
+    console.print(f"[green]✓[/green] Context '{name}' removed.")
+
+
 def validate_template(markdown: str) -> list[str]:
     """Validate that a markdown string is a well-formed Doc Weaver template.
 
@@ -175,6 +242,10 @@ def validate_template(markdown: str) -> list[str]:
         batch = int(match.group(1))
         min_chars = int(match.group(2))
         max_chars = int(match.group(3))
+        context_id = match.group(4)  # None if not present
+
+        if context_id is not None and not context_id.isidentifier():
+            errors.append(f"{raw}: context_id '{context_id}' is not a valid identifier.")
 
         if batch < 1:
             errors.append(f"{raw}: batch number must be >= 1, got {batch}.")
@@ -263,11 +334,20 @@ def generate(template_name, output_dir, prompt, prompt_file, model, timeout):
     elif prompt_file:
         context = Path(prompt_file).read_text()
 
+    # Load all stored contexts
+    _ensure_contexts_dir()
+    contexts = {}
+    for ctx_file in CONTEXTS_DIR.glob("*.txt"):
+        contexts[ctx_file.stem] = ctx_file.read_text()
+
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    with console.status(f"Hydrating template '{template_name}'...", spinner="dots"):
-        result_md, metadata = asyncio.run(hydrate(markdown, context=context, model=model, timeout=timeout))
+    try:
+        with console.status(f"Hydrating template '{template_name}'...", spinner="dots"):
+            result_md, metadata = asyncio.run(hydrate(markdown, context=context, model=model, timeout=timeout, contexts=contexts))
+    except ValueError as e:
+        raise click.ClickException(str(e))
 
     (output_path / "output.md").write_text(result_md)
     (output_path / "metadata.json").write_text(json.dumps(metadata, indent=2))
