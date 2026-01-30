@@ -1,8 +1,8 @@
 """Batch-based hydration of markdown placeholders with LLM-generated content.
 
 This module provides a queue-based system for processing markdown documents
-containing `<A, B, C>` placeholders, where A is the batch number, B is the
-minimum character count, and C is the maximum character count. The queue
+containing `<A, B, C, context_id>` placeholders, where A is the batch number, B is the
+minimum character count, C is the maximum character count, and context_id (corresponding to a context string). The queue
 processes placeholders in batch order, with all items in the same batch
 resolved concurrently.
 
@@ -52,9 +52,9 @@ class HydrationTask:
 
 
 class HydrateQueue:
-    """Builds a queue of batches from a markdown document containing <A, B, C> placeholders.
+    """Builds a queue of batches from a markdown document containing <A, B, C, context_id> placeholders.
 
-    Takes a markdown document string and builds a queue by replacing <A, B, C>
+    Takes a markdown document string and builds a queue by replacing <A, B, C, context_id>
     with actual content in batches. A determines the batch order where lower
     numbers come first and equal numbers are filled concurrently. B is the
     inclusive lower bound for number of characters allowed in the replacement
@@ -68,13 +68,14 @@ class HydrateQueue:
     def __init__(self, markdown: str):
         """Initialize the queue from a markdown document containing placeholders.
 
-        Parses all `<A, B, C>` placeholders in the document, replaces them with
+        Parses all `<A, B, C, context_id>` placeholders in the document, replaces them with
         unique markers, and prepares the batch processing queue sorted by batch
         number.
 
         Args:
-            markdown: Markdown document string containing zero or more `<A, B, C>`
-                placeholders. Placeholders are regex-matched as `<int, int, int>`.
+            markdown: Markdown document string containing zero or more `<A, B, C, context_id>`
+                placeholders. Placeholders are regex-matched as `<int, int, int>` or
+                `<int, int, int, identifier>`.
         """
         self._original_markdown = markdown
         self._tasks = self._parse_tasks()
@@ -85,7 +86,7 @@ class HydrateQueue:
     def _parse_tasks(self) -> List[HydrationTask]:
         """Extract and parse all placeholders from the original markdown.
 
-        Scans the document for `<A, B, C>` patterns and creates a `HydrationTask`
+        Scans the document for `<A, B, C, context_id>` patterns and creates a `HydrationTask`
         for each, assigning a unique sequential marker like `<<TASK_0>>`.
 
         Returns:
@@ -125,7 +126,7 @@ class HydrateQueue:
         """Get the batch number currently being processed.
 
         Returns:
-            The integer batch number (A value from `<A, B, C>`) for the current
+            The integer batch number (A value from `<A, B, C, context_id>`) for the current
             batch, or None if all batches are complete.
         """
         if self.done:
@@ -201,7 +202,7 @@ class HydrateQueue:
 
 
 async def hydrate(markdown: str, context: str = "", timeout: int = 30, model: str = "gpt-4o", contexts: dict[str, str] | None = None) -> tuple[str, dict]:
-    """Resolves all <A, B, C> and <A, B, C, context_id> placeholders in a markdown document.
+    """Resolves all <A, B, C, context_id> placeholders in a markdown document.
 
     Processes batches sequentially (lower A first), running all items within
     a batch concurrently. Each batch sees the results of all previous batches

@@ -12,12 +12,17 @@
 - [What Problems Does This Solve?](#what-problems-does-this-solve)
 - [Placeholder Syntax](#placeholder-syntax)
 - [CLI Usage](#cli-usage)
+  - [Configure](#configure)
+  - [Validate a Template](#validate-a-template)
+  - [Template Management](#template-management)
+  - [Context Management](#context-management)
+  - [Generate a Document](#generate-a-document)
 - [CLI Installation](./INSTALLATION.md)
 - [Project Structure](#project-structure)
 
 ---
 
-Doc Weaver fills `<batch, min_chars, max_chars>` placeholders in markdown templates with LLM-generated content that respects character-length constraints. Batches run sequentially so later placeholders see earlier results, while items within a batch run concurrently.
+Doc Weaver fills `<batch, min_chars, max_chars>` (and optionally `<batch, min_chars, max_chars, context_id>`) placeholders in markdown templates with LLM-generated content that respects character-length constraints. Batches run sequentially so later placeholders see earlier results, while items within a batch run concurrently.
 
 ## How It Works
 
@@ -51,15 +56,18 @@ Doc Weaver fills `<batch, min_chars, max_chars>` placeholders in markdown templa
 
 ## Placeholder Syntax
 
-Placeholders follow the format `<batch, min_chars, max_chars>`:
+Placeholders follow the format `<batch, min_chars, max_chars>` or `<batch, min_chars, max_chars, context_id>`:
 
 | Field | Description |
 |-------|-------------|
 | `batch` | Processing order. Batch 1 runs first, then batch 2, etc. |
 | `min_chars` | Minimum character count for the generated text. |
 | `max_chars` | Maximum character count for the generated text. |
+| `context_id` | *(optional)* Name of a stored context to include for this placeholder. Must be a valid identifier. |
 
 Items sharing the same batch number run concurrently. Lower batch numbers run first, so their results are visible to later batches.
+
+When a placeholder includes a `context_id`, the corresponding stored context text is prepended to the document preview for that task (in addition to the global `--prompt` context). See [Context Management](#context-management) for how to store contexts.
 
 ### Required Markdown Structure
 
@@ -131,6 +139,26 @@ doc-weaver template remove resume
 
 Templates are stored in `~/.doc_weaver/templates/`.
 
+### Context Management
+
+Store per-task context files that placeholders can reference via `context_id`:
+
+```bash
+# Save a context file
+doc-weaver context add dam_engineering ./dam-context.txt
+
+# List saved contexts
+doc-weaver context list
+
+# View a context
+doc-weaver context show dam_engineering
+
+# Delete a context
+doc-weaver context remove dam_engineering
+```
+
+Contexts are stored in `~/.doc_weaver/contexts/`. During generation, any placeholder with a `context_id` (e.g. `<1, 50, 200, dam_engineering>`) will have the matching context text prepended to its LLM prompt. If a placeholder references a context that hasn't been added, generation fails with an error listing the missing context(s).
+
 ### Generate a Document
 
 ```bash
@@ -162,7 +190,8 @@ Each generation run writes a `metadata.json` alongside `output.md`. This file re
       "char_range": [1, 50],
       "total_chars": 50,
       "elapsed_ms": 11541.36,
-      "model": "gpt-4o"
+      "model": "gpt-4o",
+      "context_id": null
     }
   ],
   "total_elapsed_ms": 14326.47,
@@ -178,6 +207,7 @@ Each generation run writes a `metadata.json` alongside `output.md`. This file re
 | `char_range` | The `[min_chars, max_chars]` constraint from the placeholder. |
 | `total_chars` | Actual character count of the generated text. |
 | `elapsed_ms` | Wall-clock time for that task (including any morph retries). |
+| `context_id` | The context ID referenced by the placeholder, or `null` if none. |
 | `total_elapsed_ms` | Wall-clock time for the entire generation run. |
 | `marker_document` | The template with placeholders replaced by their `<<TASK_N>>` markers, useful for mapping tasks back to document positions. |
 
