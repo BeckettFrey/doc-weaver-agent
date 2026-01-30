@@ -2,7 +2,7 @@
 <div align="center">
 <img src="./images/logo.png" alt="Logo" width=350>
 
-[![Documentation](https://img.shields.io/badge/Documentation-green)](./docs) [![Example Template](https://img.shields.io/badge/Example-Template-blue)](./example-template.md) ![Coverage](./images/coverage.svg)
+[![Documentation](https://img.shields.io/badge/Documentation-green)](https://beckettfrey.github.io/doc-weaver-agent/doc_weaver.html) [![Example Template](https://img.shields.io/badge/Example-Template-blue)](./example-template.md) ![Coverage](./images/coverage.svg)
 
 </div>
 
