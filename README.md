@@ -12,6 +12,7 @@
 - [What Problems Does This Solve?](#what-problems-does-this-solve)
 - [Placeholder Syntax](#placeholder-syntax)
 - [CLI Usage](#cli-usage)
+- [CLI Installation](./INSTALLATION.md)
 - [Project Structure](#project-structure)
 
 ---
