@@ -20,7 +20,7 @@ Doc Weaver fills `<batch, min_chars, max_chars>` placeholders in markdown templa
 
 ## How It Works
 
-![Flowchart](./images/doc_weaver.png)
+![Flowchart](./images/doc_weaver.svg)
 
 ### Pipeline Details
 

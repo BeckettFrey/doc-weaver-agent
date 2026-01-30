@@ -150,7 +150,7 @@ class HydrateQueue:
             md = md.replace(task.marker, '<TODO>')
             # Replace all other remaining markers with (will be filled later)
             md = marker_pattern.sub('(will be filled later)', md)
-            doc = load_markdown(md)
+            doc = load_markdown(md, check_todo=True)
             results.append((doc, task.min_chars, task.max_chars))
 
         return results
