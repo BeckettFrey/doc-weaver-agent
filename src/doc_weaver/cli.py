@@ -177,6 +177,13 @@ def context():
 @click.argument("file", type=click.Path(exists=True, dir_okay=False))
 def context_add(name, file):
     """Store a context text file under NAME."""
+    if not name.isidentifier():
+        console.print(
+            f"[red]✗[/red] Invalid context name '{name}'. "
+            "Names must contain only letters, digits, and underscores, "
+            "and cannot start with a digit."
+        )
+        raise SystemExit(1)
     _ensure_contexts_dir()
     dest = _context_path(name)
     if dest.exists():
