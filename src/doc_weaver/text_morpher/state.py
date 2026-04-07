@@ -5,6 +5,7 @@ state for the text_morpher LangGraph workflow, including input text, target
 character ranges, LLM configuration, and execution tracking.
 """
 from typing import List, TypedDict
+from langchain_core.messages import SystemMessage, HumanMessage
 
 class AgentState(TypedDict):
     """TypedDict representing the state for text morphing operations.
@@ -13,7 +14,7 @@ class AgentState(TypedDict):
         text (str): The text to be morphed.
         target_chars (tuple[int, int]): The target character range as a tuple (min, max).
         max_retries (int): Maximum number of retries allowed for total LLM calls. Defaults to 3.
-        messages (List[dict]): The message history for the LLM (maximum 2 messages at invocation).
+        messages (List[SystemMessage | HumanMessage]): The message history for the LLM (maximum 2 messages at invocation).
         responses (List[str]): The list of content received from the LLM.
         success (bool): Whether the morphing was successful. Defaults to False.
     """
@@ -21,7 +22,7 @@ class AgentState(TypedDict):
     text: str
     target_chars: tuple[int, int]
     max_retries: int = 3
-    messages: List[dict]
+    messages: List[SystemMessage | HumanMessage]
     responses: List[str]
     success: bool = False
     
